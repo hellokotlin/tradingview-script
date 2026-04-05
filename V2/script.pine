@@ -77,4 +77,63 @@ if is_rsi_valley_1 and is_yin_1 and rsi_val[1] < dimen_level
             max_rsi_gap = 0.0
             for j = 2 to valley_A_index - 1 by 1
                 max_rsi_gap := math.max(max_rsi_gap, rsi_val[j])
-            if max_rsi_gap > math.max(rsi_val[1], rsi_val
+            if max_rsi_gap > math.max(rsi_val[1], rsi_val[valley_A_index])
+                last_dimen_price := close[valley_A_index]
+                if show_lines
+                    line.new(x1 = bar_index[valley_A_index], y1 = last_dimen_price, x2 = bar_index + 60, y2 = last_dimen_price, color = color.new(color.green, 20), width = 2)
+                    label.new(x = bar_index[1], y = last_dimen_price, text = '地门', color = color.new(color.green, 100), textcolor = color.green, style = label.style_none, size = size.small)
+
+// ==========================================
+// SECTION 3: 优化后的 N 字形突破染色逻辑
+// ==========================================
+
+// 1. 阳阴阳 (N字多头突破): 第一根阳线[2]，第二根回调不破其低点[1]，第三根突破其高点[0]
+bool n_up = is_yang[2] and is_yin[1] and is_yang and close > high[2] and low[1] >= low[2]
+
+// 2. 阴阳阴 (N字空头突破): 第一根阴线[2]，第二根反弹不破其高点[1]，第三根跌破其低点[0]
+bool n_down = is_yin[2] and is_yang[1] and is_yin and close < low[2] and high[1] <= high[2]
+
+// --- 门线过滤逻辑 ---
+// 只要价格在地门之下，只允许展示阴阳阴（绿染）
+// 如果需要天门之上只展示阳阴阳，可同步开启 n_up 的过滤
+bool can_show_down = not na(last_dimen_price) and close < last_dimen_price
+bool can_show_up   = not na(last_tianmen_price) ? close > last_tianmen_price : true
+
+color base_color = na
+if show_color
+    if n_down and can_show_down
+        base_color := color.green
+    else if n_up and can_show_up
+        base_color := color.red
+
+barcolor(base_color, offset =  0, title = "K线染色(右)", editable = false)
+barcolor(base_color, offset = -1, title = "K线染色(中)", editable = false)
+barcolor(base_color, offset = -2, title = "K线染色(左)", editable = false)
+
+// ==========================================
+// SECTION 4: Smoothing MA 辅助线
+// ==========================================
+GRP_S = "Smoothing (基于 EMA 20)"
+maTypeInput   = input.string("None", "平滑类型", options = ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group = GRP_S)
+maLengthInput = input.int(14, "平滑长度", group = GRP_S)
+bbMultInput   = input.float(2.0, "布林带标准差", minval = 0.001, maxval = 50, step = 0.5, group = GRP_S)
+
+ma(source, length, MAtype) =>
+    switch MAtype
+        "SMA"                   => ta.sma(source, length)
+        "SMA + Bollinger Bands" => ta.sma(source, length)
+        "EMA"                   => ta.ema(source, length)
+        "SMMA (RMA)"            => ta.rma(source, length)
+        "WMA"                   => ta.wma(source, length)
+        "VWMA"                  => ta.vwma(source, length)
+        => na
+
+enableMA = maTypeInput != "None"
+isBB     = maTypeInput == "SMA + Bollinger Bands"
+smoothingMA    = enableMA ? ma(ema20, maLengthInput, maTypeInput) : na
+smoothingStDev = isBB ? ta.stdev(ema20, maLengthInput) * bbMultInput : na
+
+plot(smoothingMA, "平滑均线", color=color.yellow, display = enableMA ? display.all : display.none)
+bbUpperBand = plot(smoothingMA + smoothingStDev, title = "平滑上轨", color=color.gray, display = isBB ? display.all : display.none)
+bbLowerBand = plot(smoothingMA - smoothingStDev, title = "平滑下轨", color=color.gray, display = isBB ? display.all : display.none)
+fill(bbUpperBand, bbLowerBand, color= isBB ? color.new(color.gray, 90) : na, title="平滑填充")
