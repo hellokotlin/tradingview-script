@@ -1,0 +1,63 @@
+//@version=6
+indicator(title="EMA 20/60 Cross with Ribbon", shorttitle="EMA_20_60_Plus", overlay=true, timeframe="", timeframe_gaps=true)
+
+// ==========================================
+// 1. 核心 EMA 参数与计算 (保留并扩展)
+// ==========================================
+src = input(close, title="数据源")
+offset = input.int(title="偏移量", defval=0, minval=-500, maxval=500, display = display.none)
+
+// 定义长度
+len20 = input.int(20, minval=1, title="短期 EMA 长度")
+len60 = input.int(60, minval=1, title="长期 EMA 长度")
+
+// 计算 EMA
+ema20 = ta.ema(src, len20)
+ema60 = ta.ema(src, len60)
+
+// 绘制双线
+p20 = plot(ema20, title="EMA 20", color=color.blue, linewidth=2, offset=offset)
+p60 = plot(ema60, title="EMA 60", color=color.orange, linewidth=2, offset=offset)
+
+// ==========================================
+// 2. 趋势色带与交叉信号 (新增)
+// ==========================================
+// 趋势色带：多头排列为绿，空头排列为红
+ribbonColor = ema20 > ema60 ? color.new(color.green, 85) : color.new(color.red, 85)
+fill(p20, p60, color=ribbonColor, title="趋势色带填充")
+
+// 交叉判定
+goldCross  = ta.crossover(ema20, ema60)
+deathCross = ta.crossunder(ema20, ema60)
+
+// 绘制标签
+plotshape(goldCross,  title="金叉标签", style=shape.triangleup,   location=location.belowbar, color=color.green, size=size.small, text="金叉", textcolor=color.green)
+plotshape(deathCross, title="死叉标签", style=shape.triangledown, location=location.abovebar, color=color.red,   size=size.small, text="死叉", textcolor=color.red)
+
+// ==========================================
+// 3. 原有 Smoothing MA 逻辑 (保持不动，基于 EMA20)
+// ==========================================
+GRP = "Smoothing"
+TT_BB = "仅在选择 'SMA + Bollinger Bands' 时生效。决定 SMA 与带状线之间的距离。"
+maTypeInput = input.string("None", "平滑类型", options = ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group = GRP)
+var isBB = maTypeInput == "SMA + Bollinger Bands"
+maLengthInput = input.int(14, "平滑长度", group = GRP, active = maTypeInput != "None")
+bbMultInput = input.float(2.0, "布林带标准差", minval = 0.001, maxval = 50, step = 0.5, tooltip = TT_BB, group = GRP, active = isBB)
+var enableMA = maTypeInput != "None"
+
+ma(source, length, MAtype) =>
+    switch MAtype
+        "SMA"                   => ta.sma(source, length)
+        "SMA + Bollinger Bands" => ta.sma(source, length)
+        "EMA"                   => ta.ema(source, length)
+        "SMMA (RMA)"            => ta.rma(source, length)
+        "WMA"                   => ta.wma(source, length)
+        "VWMA"                  => ta.vwma(source, length)
+
+smoothingMA = enableMA ? ma(ema20, maLengthInput, maTypeInput) : na
+smoothingStDev = isBB ? ta.stdev(ema20, maLengthInput) * bbMultInput : na
+
+plot(smoothingMA, "平滑均线", color=color.yellow, display = enableMA ? display.all : display.none, editable = enableMA)
+bbUpperBand = plot(smoothingMA + smoothingStDev, title = "上轨", color=color.green, display = isBB ? display.all : display.none, editable = isBB)
+bbLowerBand = plot(smoothingMA - smoothingStDev, title = "下轨", color=color.green, display = isBB ? display.all : display.none, editable = isBB)
+fill(bbUpperBand, bbLowerBand, color= isBB ? color.new(color.green, 90) : na, title="布林带填充", display = isBB ? display.all : display.none, editable = isBB)

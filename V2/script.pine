@@ -1,0 +1,118 @@
+//@version=6
+indicator(title="EMA 20/60 + 天门地门复合指标 V2", shorttitle="EMA_TM_DM_V2", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ==========================================
+// SECTION 1: EMA 20/60 趋势系统 (原 V1 逻辑)
+// ==========================================
+src = input(close, title="数据源", group="EMA 设置")
+len20 = input.int(20, minval=1, title="短期 EMA 长度", group="EMA 设置")
+len60 = input.int(60, minval=1, title="长期 EMA 长度", group="EMA 设置")
+offset_ema = input.int(0, title="EMA 偏移量", group="EMA 设置", display=display.none)
+
+ema20 = ta.ema(src, len20)
+ema60 = ta.ema(src, len60)
+
+p20 = plot(ema20, title="EMA 20", color=color.blue, linewidth=2, offset=offset_ema)
+p60 = plot(ema60, title="EMA 60", color=color.orange, linewidth=2, offset=offset_ema)
+
+// 趋势色带
+ribbonColor = ema20 > ema60 ? color.new(color.green, 85) : color.new(color.red, 85)
+fill(p20, p60, color=ribbonColor, title="EMA 趋势色带")
+
+// 交叉信号
+goldCross  = ta.crossover(ema20, ema60)
+deathCross = ta.crossunder(ema20, ema60)
+plotshape(goldCross,  title="EMA 金叉", style=shape.triangleup,   location=location.belowbar, color=color.green, size=size.small, text="金叉", textcolor=color.green)
+plotshape(deathCross, title="EMA 死叉", style=shape.triangledown, location=location.abovebar, color=color.red,   size=size.small, text="死叉", textcolor=color.red)
+
+// ==========================================
+// SECTION 2: 天门/地门射线与 K 线染色 (新增逻辑)
+// ==========================================
+show_lines = input.bool(true, title="显示 天门/地门画线", group="天门地门设置")
+show_color = input.bool(true, title="开启 K线组合染色", group="天门地门设置")
+
+rsi_length = 3
+tianmen_level = 80.0
+dimen_level = 20.0
+rsi_val = ta.rsi(close, rsi_length)
+
+// 基础判断
+is_yang_1 = close[1] > open[1]
+is_yin_1 = close[1] < open[1]
+is_yang = close > open
+is_yin = close < open
+
+// --- 天门逻辑 ---
+is_rsi_peak_1 = rsi_val[1] > rsi_val and rsi_val[1] > rsi_val[2]
+if is_rsi_peak_1 and is_yang_1 and rsi_val[1] > tianmen_level
+    int peak_A_index = -1
+    for n = 2 to 5 by 1
+        if rsi_val[n + 1] > rsi_val[n] and rsi_val[n + 1] > rsi_val[n + 2]
+            if rsi_val[n + 1] > tianmen_level
+                peak_A_index := n + 1
+                break
+    if peak_A_index != -1 and close[peak_A_index] > open[peak_A_index]
+        if high[1] > high[peak_A_index] and rsi_val[1] < rsi_val[peak_A_index]
+            min_rsi_gap = 100.0
+            for j = 2 to peak_A_index - 1 by 1
+                min_rsi_gap := math.min(min_rsi_gap, rsi_val[j])
+            if min_rsi_gap < math.min(rsi_val[1], rsi_val[peak_A_index]) and show_lines
+                line.new(x1 = bar_index[peak_A_index], y1 = close[peak_A_index], x2 = bar_index + 60, y2 = close[peak_A_index], color = color.new(color.red, 20), width = 2)
+                label.new(x = bar_index[1], y = close[peak_A_index], text = '天门', color = color.new(color.red, 100), textcolor = color.red, style = label.style_none, size = size.small)
+
+// --- 地门逻辑 ---
+is_rsi_valley_1 = rsi_val[1] < rsi_val and rsi_val[1] < rsi_val[2]
+if is_rsi_valley_1 and is_yin_1 and rsi_val[1] < dimen_level
+    int valley_A_index = -1
+    for n = 2 to 5 by 1
+        if rsi_val[n + 1] < rsi_val[n] and rsi_val[n + 1] < rsi_val[n + 2]
+            if rsi_val[n + 1] < dimen_level
+                valley_A_index := n + 1
+                break
+    if valley_A_index != -1 and close[valley_A_index] < open[valley_A_index]
+        if low[1] < low[valley_A_index] and rsi_val[1] > rsi_val[valley_A_index]
+            max_rsi_gap = 0.0
+            for j = 2 to valley_A_index - 1 by 1
+                max_rsi_gap := math.max(max_rsi_gap, rsi_val[j])
+            if max_rsi_gap > math.max(rsi_val[1], rsi_val[valley_A_index]) and show_lines
+                line.new(x1 = bar_index[valley_A_index], y1 = close[valley_A_index], x2 = bar_index + 60, y2 = close[valley_A_index], color = color.new(color.green, 20), width = 2)
+                label.new(x = bar_index[1], y = close[valley_A_index], text = '地门', color = color.new(color.green, 100), textcolor = color.green, style = label.style_none, size = size.small)
+
+// --- K线染色组合 ---
+is_yang_yin_yang = is_yang[2] and is_yin[1] and is_yang and (close > close[1]) and (close > close[2]) and (close > high[2])
+bool is_yin_yang_yin = is_yin[2] and is_yang[1] and is_yin and (close < close[1]) and (close < close[2]) and (close < low[2])
+
+color base_color = is_yang_yin_yang ? color.red : is_yin_yang_yin ? color.green : na
+color c_color = show_color ? base_color : na
+
+barcolor(c_color, offset =  0, title = "K线染色(右)", editable = false)
+barcolor(c_color, offset = -1, title = "K线染色(中)", editable = false)
+barcolor(c_color, offset = -2, title = "K线染色(左)", editable = false)
+
+// ==========================================
+// SECTION 3: 原有 Smoothing MA 逻辑 (修复语法报错)
+// ==========================================
+GRP_S = "Smoothing (基于 EMA 20)"
+maTypeInput = input.string("None", "平滑类型", options = ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group = GRP_S)
+maLengthInput = input.int(14, "平滑长度", group = GRP_S)
+bbMultInput = input.float(2.0, "布林带标准差", minval = 0.001, maxval = 50, step = 0.5, group = GRP_S)
+enableMA = maTypeInput != "None"
+isBB = maTypeInput == "SMA + Bollinger Bands"
+
+ma(source, length, MAtype) =>
+    switch MAtype
+        "SMA"                          => ta.sma(source, length)
+        "SMA + Bollinger Bands"        => ta.sma(source, length)
+        "EMA"                          => ta.ema(source, length)
+        "SMMA (RMA)"                   => ta.rma(source, length)
+        "WMA"                          => ta.wma(source, length)
+        "VWMA"                         => ta.vwma(source, length)
+        => na
+
+smoothingMA = enableMA ? ma(ema20, maLengthInput, maTypeInput) : na
+smoothingStDev = isBB ? ta.stdev(ema20, maLengthInput) * bbMultInput : na
+
+plot(smoothingMA, "平滑均线", color=color.yellow, display = enableMA ? display.all : display.none)
+bbUpperBand = plot(smoothingMA + smoothingStDev, title = "平滑上轨", color=color.gray, display = isBB ? display.all : display.none)
+bbLowerBand = plot(smoothingMA - smoothingStDev, title = "平滑下轨", color=color.gray, display = isBB ? display.all : display.none)
+fill(bbUpperBand, bbLowerBand, color= isBB ? color.new(color.gray, 90) : na, title="平滑填充")
