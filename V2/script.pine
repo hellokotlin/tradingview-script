@@ -1,5 +1,5 @@
 //@version=6
-indicator(title="EMA 20/60 + 天门地门复合指标 V2.1", shorttitle="EMA_TM_DM_V2.1", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator(title="EMA 20/60 + 天门地门复合指标 V2.2 + PA精简版", shorttitle="EMA_TM_DM_PA_V2.2", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ==========================================
 // SECTION 1: EMA 20/60 趋势系统
@@ -94,8 +94,6 @@ bool n_up = is_yang[2] and is_yin[1] and is_yang and close > high[2] and low[1] 
 bool n_down = is_yin[2] and is_yang[1] and is_yin and close < low[2] and high[1] <= high[2]
 
 // --- 门线过滤逻辑 ---
-// 只要价格在地门之下，只允许展示阴阳阴（绿染）
-// 如果需要天门之上只展示阳阴阳，可同步开启 n_up 的过滤
 bool can_show_down = not na(last_dimen_price) and close < last_dimen_price
 bool can_show_up   = not na(last_tianmen_price) ? close > last_tianmen_price : true
 
@@ -137,3 +135,64 @@ plot(smoothingMA, "平滑均线", color=color.yellow, display = enableMA ? displ
 bbUpperBand = plot(smoothingMA + smoothingStDev, title = "平滑上轨", color=color.gray, display = isBB ? display.all : display.none)
 bbLowerBand = plot(smoothingMA - smoothingStDev, title = "平滑下轨", color=color.gray, display = isBB ? display.all : display.none)
 fill(bbUpperBand, bbLowerBand, color= isBB ? color.new(color.gray, 90) : na, title="平滑填充")
+
+// ==========================================
+// SECTION 5: H & L Count (Price Action 计数) - 精简优化版
+// ==========================================
+useHLC = input.bool(defval = true, title = "使用 H & L 计数", group = "PA 计数设置")
+HColor = input.color(defval = #089981, title = "H 颜色 (仅多头展示)", group = "PA 计数设置")
+LColor = input.color(defval = #F23645, title = "L 颜色 (仅空头展示)", group = "PA 计数设置")
+HLCInterval_Input = input.float(defval = 1.0, title = '间距系数', group = "PA 计数设置")
+
+// 计算标签与K线的动态间距
+pa_interval = ta.sma(high - low, 100) * HLCInterval_Input
+
+// 判定当前趋势状态 (复用 Section 1 的 EMA20/60 逻辑)
+bool is_uptrend   = ema20 > ema60
+bool is_downtrend = ema20 < ema60
+
+// --- High Count (多头计数) ---
+var int HCount = 0
+var float HLastL = na
+var bool BullPB = false
+var float BullPBL = na
+
+if low < low[1]
+    BullPB := true
+    if BullPBL > low or na(BullPBL)
+        BullPBL := low
+
+if high > high[1] and BullPB and useHLC
+    HCount := HCount + 1
+    if BullPBL > HLastL or na(HLastL)
+        HCount := 1
+    HLastL := BullPBL
+    BullPBL := na
+    BullPB := false
+
+    // 【优化核心】：仅在多头趋势下，且计数 <= 2 时打印标签
+    if is_uptrend and HCount <= 2
+        label.new(x = bar_index, y = high + pa_interval, text = 'H' + str.tostring(HCount), yloc = yloc.price, style = label.style_none, textcolor = HColor)
+
+// --- Low Count (空头计数) ---
+var int LCount = 0
+var float LLastH = na
+var bool BearPB = false
+var float BearPBH = na
+
+if high > high[1]
+    BearPB := true
+    if BearPBH < high or na(BearPBH)
+        BearPBH := high
+
+if low < low[1] and BearPB and useHLC
+    LCount := LCount + 1
+    if BearPBH < LLastH or na(LLastH)
+        LCount := 1
+    LLastH := BearPBH
+    BearPBH := na
+    BearPB := false
+
+    // 【优化核心】：仅在空头趋势下，且计数 <= 2 时打印标签
+    if is_downtrend and LCount <= 2
+        label.new(x = bar_index, y = low - pa_interval, text = 'L' + str.tostring(LCount), yloc = yloc.price, style = label.style_none, textcolor = LColor)
