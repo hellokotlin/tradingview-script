@@ -1,5 +1,5 @@
 //@version=6
-indicator(title="EMA 20/60 + 天门地门复合指标 V2.2 + PA精简版", shorttitle="EMA_TM_DM_PA_V2.2", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator(title="EMA 20/60 + 天门地门复合指标 V2.2 + Ninetrans A2版", shorttitle="EMA_TM_DM_A2_V2.2", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ==========================================
 // SECTION 1: EMA 20/60 趋势系统
@@ -43,15 +43,12 @@ is_yin_1  = close[1] < open[1]
 is_yang   = close > open
 is_yin    = close < open
 
-// --- 天门生成逻辑 ---
-is_rsi_peak_1 = rsi_val[1] > rsi_val and rsi_val[1] > rsi_val[2]
-if is_rsi_peak_1 and is_yang_1 and rsi_val[1] > tianmen_level
+if rsi_val[1] > rsi_val and rsi_val[1] > rsi_val[2] and is_yang_1 and rsi_val[1] > tianmen_level
     int peak_A_index = -1
     for n = 2 to 5 by 1
-        if rsi_val[n + 1] > rsi_val[n] and rsi_val[n + 1] > rsi_val[n + 2]
-            if rsi_val[n + 1] > tianmen_level
-                peak_A_index := n + 1
-                break
+        if rsi_val[n + 1] > rsi_val[n] and rsi_val[n + 1] > rsi_val[n + 2] and rsi_val[n + 1] > tianmen_level
+            peak_A_index := n + 1
+            break
     if peak_A_index != -1 and close[peak_A_index] > open[peak_A_index]
         if high[1] > high[peak_A_index] and rsi_val[1] < rsi_val[peak_A_index]
             min_rsi_gap = 100.0
@@ -63,15 +60,12 @@ if is_rsi_peak_1 and is_yang_1 and rsi_val[1] > tianmen_level
                     line.new(x1 = bar_index[peak_A_index], y1 = last_tianmen_price, x2 = bar_index + 60, y2 = last_tianmen_price, color = color.new(color.red, 20), width = 2)
                     label.new(x = bar_index[1], y = last_tianmen_price, text = '天门', color = color.new(color.red, 100), textcolor = color.red, style = label.style_none, size = size.small)
 
-// --- 地门生成逻辑 ---
-is_rsi_valley_1 = rsi_val[1] < rsi_val and rsi_val[1] < rsi_val[2]
-if is_rsi_valley_1 and is_yin_1 and rsi_val[1] < dimen_level
+if rsi_val[1] < rsi_val and rsi_val[1] < rsi_val[2] and is_yin_1 and rsi_val[1] < dimen_level
     int valley_A_index = -1
     for n = 2 to 5 by 1
-        if rsi_val[n + 1] < rsi_val[n] and rsi_val[n + 1] < rsi_val[n + 2]
-            if rsi_val[n + 1] < dimen_level
-                valley_A_index := n + 1
-                break
+        if rsi_val[n + 1] < rsi_val[n] and rsi_val[n + 1] < rsi_val[n + 2] and rsi_val[n + 1] < dimen_level
+            valley_A_index := n + 1
+            break
     if valley_A_index != -1 and close[valley_A_index] < open[valley_A_index]
         if low[1] < low[valley_A_index] and rsi_val[1] > rsi_val[valley_A_index]
             max_rsi_gap = 0.0
@@ -136,32 +130,29 @@ bbUpperBand = plot(smoothingMA + smoothingStDev, title = "平滑上轨", color=c
 bbLowerBand = plot(smoothingMA - smoothingStDev, title = "平滑下轨", color=color.gray, display = isBB ? display.all : display.none)
 fill(bbUpperBand, bbLowerBand, color= isBB ? color.new(color.gray, 90) : na, title="平滑填充")
 
-// ==========================================
-// SECTION 5: H & L Count (Price Action 计数) - 精简优化版
-// ==========================================
-useHLC = input.bool(defval = true, title = "使用 H & L 计数", group = "PA 计数设置")
-HColor = input.color(defval = #089981, title = "H 颜色 (仅多头展示)", group = "PA 计数设置")
-LColor = input.color(defval = #F23645, title = "L 颜色 (仅空头展示)", group = "PA 计数设置")
-HLCInterval_Input = input.float(defval = 1.0, title = '间距系数', group = "PA 计数设置")
-
-// 计算标签与K线的动态间距
-pa_interval = ta.sma(high - low, 100) * HLCInterval_Input
-
-// 判定当前趋势状态 (复用 Section 1 的 EMA20/60 逻辑)
+// 公共趋势状态变量 (供 Sec5 和 Sec6 使用)
 bool is_uptrend   = ema20 > ema60
 bool is_downtrend = ema20 < ema60
 
-// --- High Count (多头计数) ---
+// ==========================================
+// SECTION 5: H & L Count (基础 Price Action 计数)
+// 保留原始的基础计数逻辑，不包含 A2 过滤，方便复用与对比
+// ==========================================
+useHLC = input.bool(defval = false, title = "使用基础 H&L 计数", group = "PA 基础计数设置")
+HColor = input.color(defval = #089981, title = "H 颜色", group = "PA 基础计数设置")
+LColor = input.color(defval = #F23645, title = "L 颜色", group = "PA 基础计数设置")
+HLCInterval_Input = input.float(defval = 1.0, title = '基础间距系数', group = "PA 基础计数设置")
+
+pa_interval = ta.sma(high - low, 100) * HLCInterval_Input
+
 var int HCount = 0
 var float HLastL = na
 var bool BullPB = false
 var float BullPBL = na
-
 if low < low[1]
     BullPB := true
     if BullPBL > low or na(BullPBL)
         BullPBL := low
-
 if high > high[1] and BullPB and useHLC
     HCount := HCount + 1
     if BullPBL > HLastL or na(HLastL)
@@ -169,22 +160,17 @@ if high > high[1] and BullPB and useHLC
     HLastL := BullPBL
     BullPBL := na
     BullPB := false
-
-    // 【优化核心】：仅在多头趋势下，且计数 <= 2 时打印标签
     if is_uptrend and HCount <= 2
-        label.new(x = bar_index, y = high + pa_interval, text = 'H' + str.tostring(HCount), yloc = yloc.price, style = label.style_none, textcolor = HColor)
+        label.new(x = bar_index, y = high + pa_interval, text = 'H' + str.tostring(HCount), yloc = yloc.price, style = label.style_none, textcolor = HColor, size = size.small)
 
-// --- Low Count (空头计数) ---
 var int LCount = 0
 var float LLastH = na
 var bool BearPB = false
 var float BearPBH = na
-
 if high > high[1]
     BearPB := true
     if BearPBH < high or na(BearPBH)
         BearPBH := high
-
 if low < low[1] and BearPB and useHLC
     LCount := LCount + 1
     if BearPBH < LLastH or na(LLastH)
@@ -192,7 +178,86 @@ if low < low[1] and BearPB and useHLC
     LLastH := BearPBH
     BearPBH := na
     BearPB := false
-
-    // 【优化核心】：仅在空头趋势下，且计数 <= 2 时打印标签
     if is_downtrend and LCount <= 2
-        label.new(x = bar_index, y = low - pa_interval, text = 'L' + str.tostring(LCount), yloc = yloc.price, style = label.style_none, textcolor = LColor)
+        label.new(x = bar_index, y = low - pa_interval, text = 'L' + str.tostring(LCount), yloc = yloc.price, style = label.style_none, textcolor = LColor, size = size.small)
+
+
+// ==========================================
+// SECTION 6: Ninetrans A2/A22 信号体系 (高阶均线计数)
+// 新增的解耦模块，加入了 ATR 空间过滤与 A2/A22 核心逻辑
+// ==========================================
+useA2 = input.bool(defval = true, title = "使用高阶 A2/A22 计数", group = "Ninetrans A2设置")
+useEmaFilter = input.bool(defval = true, title = "启用 EMA 距离限制", tooltip = "严格按照 A2 定义：如果回踩离 EMA 太远，则不属于 A2", group = "Ninetrans A2设置")
+emaDist = input.float(defval = 1.5, title = "允许的最大距离 (ATR倍数)", group = "Ninetrans A2设置")
+a2_HColor = input.color(defval = color.blue, title = "多头 A2 颜色", group = "Ninetrans A2设置")
+a2_LColor = input.color(defval = color.purple, title = "空头 A2 颜色", group = "Ninetrans A2设置")
+a2_Interval_Input = input.float(defval = 1.0, title = 'A2 间距系数', group = "Ninetrans A2设置")
+
+a2_interval = ta.sma(high - low, 100) * a2_Interval_Input
+atr_val = ta.atr(14)
+
+// --- A2 多头逻辑 ---
+var int a2_HCount = 0
+var float a2_HLastL = na
+var bool a2_BullPB = false
+var float a2_BullPBL = na
+
+if low < low[1]
+    a2_BullPB := true
+    if a2_BullPBL > low or na(a2_BullPBL)
+        a2_BullPBL := low
+
+if high > high[1] and a2_BullPB and useA2
+    a2_HCount := a2_HCount + 1
+    if a2_BullPBL > a2_HLastL or na(a2_HLastL)
+        a2_HCount := a2_HCount
+    else
+        a2_HCount := 1
+
+    a2_HLastL := a2_BullPBL
+    float currentBullPBL = a2_BullPBL
+    a2_BullPBL := na
+    a2_BullPB := false
+
+    if is_uptrend and a2_HCount <= 3
+        bool near_ema = not useEmaFilter or (math.abs(currentBullPBL - ema20) <= atr_val * emaDist)
+        string label_text_H = "H1"
+        if a2_HCount == 2
+            label_text_H := near_ema ? "A2(H2)" : "H2"
+        else if a2_HCount == 3
+            label_text_H := near_ema ? "A22(H3)" : "H3"
+
+        label.new(x = bar_index, y = high + a2_interval, text = label_text_H, yloc = yloc.price, style = label.style_none, textcolor = a2_HColor, size = size.small)
+
+// --- A2 空头逻辑 ---
+var int a2_LCount = 0
+var float a2_LLastH = na
+var bool a2_BearPB = false
+var float a2_BearPBH = na
+
+if high > high[1]
+    a2_BearPB := true
+    if a2_BearPBH < high or na(a2_BearPBH)
+        a2_BearPBH := high
+
+if low < low[1] and a2_BearPB and useA2
+    a2_LCount := a2_LCount + 1
+    if a2_BearPBH < a2_LLastH or na(a2_LLastH)
+        a2_LCount := a2_LCount
+    else
+        a2_LCount := 1
+
+    a2_LLastH := a2_BearPBH
+    float currentBearPBH = a2_BearPBH
+    a2_BearPBH := na
+    a2_BearPB := false
+
+    if is_downtrend and a2_LCount <= 3
+        bool near_ema = not useEmaFilter or (math.abs(currentBearPBH - ema20) <= atr_val * emaDist)
+        string label_text_L = "L1"
+        if a2_LCount == 2
+            label_text_L := near_ema ? "A2(L2)" : "L2"
+        else if a2_LCount == 3
+            label_text_L := near_ema ? "A22(L3)" : "L3"
+
+        label.new(x = bar_index, y = low - a2_interval, text = label_text_L, yloc = yloc.price, style = label.style_none, textcolor = a2_LColor, size = size.small)
